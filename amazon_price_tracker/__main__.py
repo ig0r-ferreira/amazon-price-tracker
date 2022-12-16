@@ -1,3 +1,5 @@
+import json
+import unicodedata
 from smtplib import SMTP
 from typing import Any
 
@@ -24,29 +26,31 @@ def get_html_page(url: str, headers: dict[str, Any] | None = None) -> str:
     return response.text
 
 
-def extract_price(soup: BeautifulSoup) -> tuple[str, str] | None:
-    price_whole_tag = soup.select_one('.a-price-whole')
-    price_decimal_tag = soup.select_one('.a-price-fraction')
+def normalize_string(text: str) -> str:
+    return unicodedata.normalize('NFKD', text)
 
-    if price_whole_tag is None or price_decimal_tag is None:
+
+def extract_price_data(soup: BeautifulSoup) -> dict[str, Any] | None:
+    price_data_tag = soup.select_one('.twister-plus-buying-options-price-data')
+    if price_data_tag is None:
         return None
 
-    return price_whole_tag.text, price_decimal_tag.text
+    price_data = json.loads(normalize_string(price_data_tag.get_text()))[0]
 
-
-def format_price(whole_part: str, decimal_part: str) -> float:
-    whole_part = whole_part.rstrip(',').replace('.', '_')
-    return float(whole_part) + (int(decimal_part) / 100)
+    return {
+        'displayed_price': price_data['displayPrice'],
+        'price_amount': float(price_data['priceAmount']),
+    }
 
 
 def send_email(
-    client: EmailClient, product_name: str, price: float, link: str
+    client: EmailClient, product_name: str, price: str, link: str
 ) -> None:
     msg = make_message(
         from_address=EMAIL_SENDER,
         to_address=EMAIL_RECIPIENTS,
         subject='Amazon Price Alert',
-        body=f'{product_name} is now R$ {price}.\n{link}',
+        body=f'{product_name} is now {price}.\n{link}',
     )
     client.send_message(msg)
 
@@ -55,13 +59,9 @@ def main() -> None:
     html_page = get_html_page(url=PRODUCT_PAGE_URL, headers=REQUEST_HEADERS)
     soup = BeautifulSoup(html_page, 'lxml')
 
-    price = extract_price(soup)
+    price_data = extract_price_data(soup)
 
-    if price is None:
-        return
-
-    product_price = format_price(*price)
-    if product_price > TARGET_PRICE:
+    if price_data is None or price_data['price_amount'] > TARGET_PRICE:
         return
 
     email_client = EmailClient(
@@ -71,7 +71,9 @@ def main() -> None:
             SMTP_SERVER_PASSWORD,
         ),
     )
-    send_email(email_client, 'PS5', product_price, PRODUCT_PAGE_URL)
+    send_email(
+        email_client, 'PS5', price_data['displayed_price'], PRODUCT_PAGE_URL
+    )
 
 
 if __name__ == '__main__':
