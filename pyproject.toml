@@ -1,14 +1,21 @@
 [tool.poetry]
 name = "amazon-price-tracker"
 version = "0.1.0"
-description = ""
+description = "Tracks the price of a product on Amazon and emails you when the price is less than your specified price."
 authors = ["Igor Ferreira <iferreira.n01@gmail.com>"]
 readme = "README.md"
 packages = [{include = "amazon_price_tracker"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"
+requests = "^2.28.1"
+beautifulsoup4 = "^4.11.1"
 
+
+[tool.poetry.group.dev.dependencies]
+blue = "^0.9.1"
+isort = "^5.11.2"
+mypy = "^0.991"
 
 [build-system]
 requires = ["poetry-core"]
