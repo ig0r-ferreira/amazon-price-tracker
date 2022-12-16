@@ -13,3 +13,5 @@ REQUEST_HEADERS: dict[str, Any] = {
     ),
     'Accept-Language': 'en-US, en;q=0.5',
 }
+
+TARGET_PRICE = 4_000
