@@ -4,23 +4,18 @@ import unicodedata
 from dataclasses import dataclass
 from logging.config import fileConfig
 from smtplib import SMTP
-from typing import Any
+from typing import Any, cast
 
 import requests
 from bs4 import BeautifulSoup
 
-from amazon_price_tracker.constants import (
-    EMAIL_RECIPIENTS,
-    EMAIL_SENDER,
-    PRODUCT_URL,
-    REQUEST_HEADERS,
-    SMTP_SERVER_HOST,
-    SMTP_SERVER_PASSWORD,
-    SMTP_SERVER_PORT,
-    SMTP_SERVER_USERNAME,
-    TARGET_PRICE,
-)
 from amazon_price_tracker.email_client import EmailClient, make_message
+from amazon_price_tracker.settings import (
+    EMAIL_SETTINGS,
+    REQUEST_HEADERS,
+    SMTP_SERVER,
+    TARGET_PRODUCT,
+)
 
 fileConfig('logging_config.ini')
 logger = logging.getLogger()
@@ -77,8 +72,8 @@ def extract_price_data(soup: BeautifulSoup) -> dict[str, Any] | None:
 
 def send_email(client: EmailClient, product: Product) -> None:
     msg = make_message(
-        from_address=EMAIL_SENDER,
-        to_address=EMAIL_RECIPIENTS,
+        from_address=EMAIL_SETTINGS.sender,
+        to_address=cast(list[str], EMAIL_SETTINGS.recipients),
         subject=f'Amazon - Low Price for {product.title[:30]}...',
         body=f'We know you are interested in {product.title}.\n'
         f'Buy now for {product.display_price}.\n\n'
@@ -88,7 +83,13 @@ def send_email(client: EmailClient, product: Product) -> None:
 
 
 def main() -> None:
-    html_page = get_html_page(url=PRODUCT_URL, headers=REQUEST_HEADERS)
+    html_page = get_html_page(
+        url=TARGET_PRODUCT.url,
+        headers={
+            'User-Agent': REQUEST_HEADERS.user_agent,
+            'Accept-Language': REQUEST_HEADERS.accept_lang,
+        },
+    )
     soup = BeautifulSoup(html_page, 'lxml')
 
     logger.info('Scraping started...')
@@ -108,22 +109,22 @@ def main() -> None:
             'could not be obtained.'
         )
         return
-    if price_data['price_amount'] > TARGET_PRICE:
+    if price_data['price_amount'] > TARGET_PRODUCT.price:
         logger.info(
             'The script will terminate given that the product price remains '
             'above the expected value.'
         )
         return
 
-    product = Product(title=product_title, link=PRODUCT_URL, **price_data)
+    product = Product(
+        title=product_title, link=TARGET_PRODUCT.url, **price_data
+    )
 
     email_client = EmailClient(
-        smtp_server=SMTP(host=f'{SMTP_SERVER_HOST}:{SMTP_SERVER_PORT}'),
-        credentials=(
-            SMTP_SERVER_USERNAME,
-            SMTP_SERVER_PASSWORD,
-        ),
+        smtp_server=SMTP(host=f'{SMTP_SERVER.host}:{SMTP_SERVER.port}'),
+        credentials=(SMTP_SERVER.username, SMTP_SERVER.password),
     )
+
     logger.info('Sending alert email...')
     send_email(email_client, product)
     logger.info('Email sent.')
