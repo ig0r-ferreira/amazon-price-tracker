@@ -1,6 +1,8 @@
 import json
+import logging
 import unicodedata
 from dataclasses import dataclass
+from logging.config import fileConfig
 from smtplib import SMTP
 from typing import Any
 
@@ -19,6 +21,9 @@ from amazon_price_tracker.constants import (
     TARGET_PRICE,
 )
 from amazon_price_tracker.email_client import EmailClient, make_message
+
+fileConfig('logging_config.ini')
+logger = logging.getLogger()
 
 
 @dataclass(frozen=True)
@@ -40,19 +45,29 @@ def normalize_string(text: str) -> str:
 
 
 def extract_product_title(soup: BeautifulSoup) -> str:
-    product_tag = soup.select_one('span#productTitle')
+    tag_id = 'productTitle'
+    product_tag = soup.find(name='span', id=tag_id)
+
     if product_tag is None:
+        logger.error('No tag with id equal to %s was found.', tag_id)
         return ''
 
     return product_tag.get_text(strip=True)
 
 
 def extract_price_data(soup: BeautifulSoup) -> dict[str, Any] | None:
-    price_data_tag = soup.select_one('.twister-plus-buying-options-price-data')
+    tag_class = 'twister-plus-buying-options-price-data'
+    price_data_tag = soup.find(name='div', class_=tag_class)
+
     if price_data_tag is None:
+        logger.error('No tag with class %s was found.', tag_class)
         return None
 
-    price_data = json.loads(normalize_string(price_data_tag.get_text()))[0]
+    try:
+        price_data = json.loads(normalize_string(price_data_tag.get_text()))[0]
+    except (IndexError, json.JSONDecodeError):
+        logger.error('Failed to get price tag content.')
+        return None
 
     return {
         'display_price': price_data['displayPrice'],
@@ -76,10 +91,28 @@ def main() -> None:
     html_page = get_html_page(url=PRODUCT_URL, headers=REQUEST_HEADERS)
     soup = BeautifulSoup(html_page, 'lxml')
 
+    logger.info('Scraping started...')
     product_title = extract_product_title(soup)
     price_data = extract_price_data(soup)
+    logger.info('Scraping finished.')
 
-    if price_data is None or price_data['price_amount'] > TARGET_PRICE:
+    if not product_title:
+        logger.critical(
+            'The script will exit because the product title could '
+            'not be obtained.'
+        )
+        return
+    if not price_data:
+        logger.critical(
+            'The script will exit because the product price data '
+            'could not be obtained.'
+        )
+        return
+    if price_data['price_amount'] > TARGET_PRICE:
+        logger.info(
+            'The script will terminate given that the product price remains '
+            'above the expected value.'
+        )
         return
 
     product = Product(title=product_title, link=PRODUCT_URL, **price_data)
@@ -91,7 +124,9 @@ def main() -> None:
             SMTP_SERVER_PASSWORD,
         ),
     )
+    logger.info('Sending alert email...')
     send_email(email_client, product)
+    logger.info('Email sent.')
 
 
 if __name__ == '__main__':
