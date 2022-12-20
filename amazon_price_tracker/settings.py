@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import Any, Sequence
 
 from dotenv import load_dotenv
@@ -56,6 +57,7 @@ class TargetProduct(BaseSettings):
         return value
 
 
+ROOT_DIR = Path(__file__).parent.parent.absolute()
 SMTP_SERVER = SMTPServer()
 REQUEST_HEADERS = RequestHeaders()
 EMAIL_SETTINGS = EmailSettings()

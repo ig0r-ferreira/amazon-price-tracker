@@ -1,8 +1,6 @@
 import json
-import logging
 import unicodedata
 from dataclasses import dataclass
-from logging.config import fileConfig
 from smtplib import SMTP
 from typing import Any, cast
 
@@ -10,15 +8,13 @@ import requests
 from bs4 import BeautifulSoup
 
 from amazon_price_tracker.email_client import EmailClient, make_message
+from amazon_price_tracker.log_manager import get_logger
 from amazon_price_tracker.settings import (
     EMAIL_SETTINGS,
     REQUEST_HEADERS,
     SMTP_SERVER,
     TARGET_PRODUCT,
 )
-
-fileConfig('logging_config.ini')
-logger = logging.getLogger()
 
 
 @dataclass(frozen=True)
@@ -131,4 +127,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
+    logger = get_logger(__name__)
     main()
