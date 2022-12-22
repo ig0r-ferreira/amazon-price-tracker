@@ -6,6 +6,7 @@ from typing import Any, cast
 
 import requests
 from bs4 import BeautifulSoup
+from requests.exceptions import RequestException
 
 from amazon_price_tracker.email_client import EmailClient, make_message
 from amazon_price_tracker.log_manager import get_logger
@@ -26,9 +27,14 @@ class Product:
 
 
 def get_html_page(url: str, headers: dict[str, Any] | None = None) -> str:
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    return response.text
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+    except RequestException:
+        logger.exception('Error accessing the page.')
+        return ''
+    else:
+        return response.text
 
 
 def normalize_string(text: str) -> str:
@@ -46,19 +52,19 @@ def extract_product_title(soup: BeautifulSoup) -> str:
     return product_tag.get_text(strip=True)
 
 
-def extract_price_data(soup: BeautifulSoup) -> dict[str, Any] | None:
+def extract_price_data(soup: BeautifulSoup) -> dict[str, Any]:
     tag_class = 'twister-plus-buying-options-price-data'
     price_data_tag = soup.find(name='div', class_=tag_class)
 
     if price_data_tag is None:
         logger.error('No tag with class %s was found.', tag_class)
-        return None
+        return {}
 
     try:
         price_data = json.loads(normalize_string(price_data_tag.get_text()))[0]
     except (IndexError, json.JSONDecodeError):
         logger.error('Failed to get price tag content.')
-        return None
+        return {}
 
     return {
         'display_price': price_data['displayPrice'],
@@ -86,30 +92,19 @@ def main() -> None:
             'Accept-Language': REQUEST_HEADERS.accept_lang,
         },
     )
+
+    if not html_page:
+        return
+
     soup = BeautifulSoup(html_page, 'lxml')
 
-    logger.info('Scraping started...')
-    product_title = extract_product_title(soup)
-    price_data = extract_price_data(soup)
-    logger.info('Scraping finished.')
+    if not (product_title := extract_product_title(soup)):
+        return
 
-    if not product_title:
-        logger.critical(
-            'The script will exit because the product title could '
-            'not be obtained.'
-        )
-        return
-    if not price_data:
-        logger.critical(
-            'The script will exit because the product price data '
-            'could not be obtained.'
-        )
-        return
-    if price_data['price_amount'] > TARGET_PRODUCT.price:
-        logger.info(
-            'The script will terminate given that the product price remains '
-            'above the expected value.'
-        )
+    price_data = extract_price_data(soup)
+    price_amount = price_data.get('price_amount')
+
+    if not price_amount or price_amount > TARGET_PRODUCT.price:
         return
 
     product = Product(
@@ -121,11 +116,11 @@ def main() -> None:
         credentials=(SMTP_SERVER.username, SMTP_SERVER.password),
     )
 
-    logger.info('Sending alert email...')
     send_email(email_client, product)
-    logger.info('Email sent.')
 
 
 if __name__ == '__main__':
     logger = get_logger(__name__)
+    logger.info('Started')
     main()
+    logger.info('Finished')
