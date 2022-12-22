@@ -1,19 +1,17 @@
 import json
 import unicodedata
 from dataclasses import dataclass
-from smtplib import SMTP
-from typing import Any, cast
+from typing import Any
 
 import requests
 from bs4 import BeautifulSoup
 from requests.exceptions import RequestException
 
-from amazon_price_tracker.email_client import EmailClient, make_message
+from amazon_price_tracker.email_client import get_email_client, make_message
 from amazon_price_tracker.log_manager import get_logger
 from amazon_price_tracker.settings import (
     EMAIL_SETTINGS,
     REQUEST_HEADERS,
-    SMTP_SERVER,
     TARGET_PRODUCT,
 )
 
@@ -72,16 +70,13 @@ def extract_price_data(soup: BeautifulSoup) -> dict[str, Any]:
     }
 
 
-def send_email(client: EmailClient, product: Product) -> None:
-    msg = make_message(
-        from_address=EMAIL_SETTINGS.sender,
-        to_address=cast(list[str], EMAIL_SETTINGS.recipients),
-        subject=f'Amazon - Low Price for {product.title[:30]}...',
-        body=f'We know you are interested in {product.title}.\n'
+def get_template_email(product: Product) -> dict[str, Any]:
+    return {
+        'subject': f'Amazon - Low Price for {product.title[:30]}...',
+        'body': f'We know you are interested in {product.title}.\n'
         f'Buy now for {product.display_price}.\n\n'
         f'Visit the link to buy: {product.link}',
-    )
-    client.send_message(msg)
+    }
 
 
 def main() -> None:
@@ -111,12 +106,13 @@ def main() -> None:
         title=product_title, link=TARGET_PRODUCT.url, **price_data
     )
 
-    email_client = EmailClient(
-        smtp_server=SMTP(host=f'{SMTP_SERVER.host}:{SMTP_SERVER.port}'),
-        credentials=(SMTP_SERVER.username, SMTP_SERVER.password),
+    client = get_email_client()
+    msg = make_message(
+        from_address=EMAIL_SETTINGS.sender,
+        to_address=EMAIL_SETTINGS.recipients,
+        **get_template_email(product),
     )
-
-    send_email(email_client, product)
+    client.send_message(msg)
 
 
 if __name__ == '__main__':

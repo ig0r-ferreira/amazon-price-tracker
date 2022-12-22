@@ -1,10 +1,13 @@
 from email.message import EmailMessage
 from smtplib import SMTP
+from typing import Sequence
+
+from amazon_price_tracker.settings import SMTP_SERVER
 
 
 def make_message(
     from_address: str,
-    to_address: str | list[str],
+    to_address: str | Sequence[str],
     subject: str = 'No subject',
     body: str = '',
     content_type: str = 'plain',
@@ -48,3 +51,18 @@ class EmailClient:
             from_addr=msg['From'], to_addrs=msg['To'], msg=msg.as_string()
         )
         self._quit()
+
+
+def get_smtp_server() -> SMTP:
+    return SMTP(host=f'{SMTP_SERVER.host}:{SMTP_SERVER.port}')
+
+
+def get_credentials() -> tuple[str, str]:
+    return (SMTP_SERVER.username, SMTP_SERVER.password)
+
+
+def get_email_client() -> EmailClient:
+    return EmailClient(
+        smtp_server=get_smtp_server(),
+        credentials=get_credentials(),
+    )
